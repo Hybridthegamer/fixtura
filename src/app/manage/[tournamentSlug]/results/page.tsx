@@ -1,5 +1,5 @@
 // ─── Manage Results Page ────────────────────────────────────
-import { getTournament } from "@/lib/services/tournament";
+import { getCachedTournament } from "@/lib/services/tournament";
 import { ResultsConsole } from "@/components/results/results-console";
 import { notFound } from "next/navigation";
 
@@ -9,33 +9,31 @@ interface Props {
 
 export default async function ManageResultsPage({ params }: Props) {
   const { tournamentSlug } = await params;
-  const t = await getTournament(tournamentSlug);
+  const t = await getCachedTournament(tournamentSlug);
   if (!t) notFound();
 
-  // Build match data for the results console
-  const matchData = t.matches.map((m) => {
-    const homeUser = t.registrations.find((r) => r.userId === m.homeUserId);
-    const awayUser = t.registrations.find((r) => r.userId === m.awayUserId);
-    const homeSquad = t.squads.find((s) => s.id === m.homeSquadId);
-    const awaySquad = t.squads.find((s) => s.id === m.awaySquadId);
-
-    const gw = t.gameweeks.find((g) => g.id === m.gameweekId);
+  const matchData = t.matches.map((m: Record<string, unknown>) => {
+    const homeUser = t.registrations.find((r: { userId: string | null }) => r.userId === m.homeUserId);
+    const awayUser = t.registrations.find((r: { userId: string | null }) => r.userId === m.awayUserId);
+    const homeSquad = t.squads.find((s: { id: string | null }) => s.id === m.homeSquadId);
+    const awaySquad = t.squads.find((s: { id: string | null }) => s.id === m.awaySquadId);
+    const gw = t.gameweeks.find((g: { id: string | null }) => g.id === m.gameweekId);
 
     return {
-      id: m.id,
-      homeUserId: m.homeUserId,
-      awayUserId: m.awayUserId,
-      homeSquadId: m.homeSquadId,
-      awaySquadId: m.awaySquadId,
-      homeScore: m.homeScore,
-      awayScore: m.awayScore,
-      status: m.status,
-      homeGamertag: homeUser?.gamertag ?? "TBD",
-      awayGamertag: awayUser?.gamertag ?? "TBD",
-      homeColorKey: homeSquad?.colorKey ?? 0,
-      awayColorKey: awaySquad?.colorKey ?? 1,
-      gameweekNumber: gw?.number ?? 0,
-      squadMatchupLabel: `${homeSquad?.shortName ?? "?"} v ${awaySquad?.shortName ?? "?"}`,
+      id: m.id as string,
+      homeUserId: m.homeUserId as string | null,
+      awayUserId: m.awayUserId as string | null,
+      homeSquadId: m.homeSquadId as string | null,
+      awaySquadId: m.awaySquadId as string | null,
+      homeScore: m.homeScore as number | null,
+      awayScore: m.awayScore as number | null,
+      status: m.status as string,
+      homeGamertag: (homeUser as { gamertag?: string })?.gamertag ?? "TBD",
+      awayGamertag: (awayUser as { gamertag?: string })?.gamertag ?? "TBD",
+      homeColorKey: (homeSquad as { colorKey?: number })?.colorKey ?? 0,
+      awayColorKey: (awaySquad as { colorKey?: number })?.colorKey ?? 1,
+      gameweekNumber: (gw as { number?: number })?.number ?? 0,
+      squadMatchupLabel: `${(homeSquad as { shortName?: string })?.shortName ?? "?"} v ${(awaySquad as { shortName?: string })?.shortName ?? "?"}`,
     };
   });
 
@@ -45,7 +43,7 @@ export default async function ManageResultsPage({ params }: Props) {
       <ResultsConsole
         tournamentSlug={tournamentSlug}
         matches={matchData}
-        gameweeks={t.gameweeks.map((g) => ({ number: g.number, label: g.label }))}
+        gameweeks={t.gameweeks.map((g: { number: number; label: string | null }) => ({ number: g.number, label: g.label }))}
       />
     </div>
   );

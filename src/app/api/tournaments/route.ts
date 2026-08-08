@@ -16,9 +16,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Name and slug are required." }, { status: 400 });
   }
 
-  // Find user's organization or create one
   let org = await prisma.organization.findFirst({
-    where: { members: { some: { userId: session.user.id } } },
+    where: { createdById: session.user.id },
   });
 
   if (!org) {
@@ -34,7 +33,6 @@ export async function POST(req: Request) {
     });
   }
 
-  // Check slug uniqueness
   const existing = await prisma.tournament.findUnique({ where: { slug } });
   if (existing) {
     return NextResponse.json({ error: "Slug already taken." }, { status: 409 });

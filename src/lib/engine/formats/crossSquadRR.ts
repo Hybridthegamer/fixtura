@@ -17,9 +17,9 @@ import type {
 } from "../types";
 
 export interface CrossSquadRRConfig {
-  squadsPerMatchup: number; // default 2
-  matchupsPerGameweek: number; // default 2
-  squadSize: number; // P — players per squad
+  squadsPerMatchup?: number;
+  matchupsPerGameweek?: number;
+  squadSize?: number;
 }
 
 const DEFAULT_CONFIG: CrossSquadRRConfig = {

@@ -1,7 +1,7 @@
 // ─── Tournament Shell Layout ────────────────────────────────
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTournament } from "@/lib/services/tournament";
+import { getCachedTournament } from "@/lib/services/tournament";
 import { StatusPill } from "@/components/ui/primitives";
 import type { ReactNode } from "react";
 
@@ -12,7 +12,7 @@ interface Props {
 
 export default async function TournamentLayout({ children, params }: Props) {
   const { tournamentSlug } = await params;
-  const tournament = await getTournament(tournamentSlug);
+  const tournament = await getCachedTournament(tournamentSlug);
 
   if (!tournament || tournament.visibility === "PRIVATE") {
     notFound();
@@ -27,10 +27,12 @@ export default async function TournamentLayout({ children, params }: Props) {
     { label: "Rules", href: `/t/${tournamentSlug}/rules` },
   ];
 
-  // Compute status pill text
+  const publishedGameweeks = tournament.gameweeks.filter(
+    (gw: { publishedAt: Date | null }) => gw.publishedAt
+  ).length;
   const statusText: Record<string, string> = {
     REGISTRATION_OPEN: `Registration open${tournament.registrationClosesAt ? ` · closes in ${Math.ceil((new Date(tournament.registrationClosesAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))}d` : ""}`,
-    LIVE: `Live · Gameweek ${tournament.gameweeks.filter(gw => gw.publishedAt).length} of ${tournament.gameweeks.length}`,
+    LIVE: `Live · Gameweek ${publishedGameweeks} of ${tournament.gameweeks.length}`,
     COMPLETED: "Completed",
   };
 
@@ -39,7 +41,6 @@ export default async function TournamentLayout({ children, params }: Props) {
 
   return (
     <div className="min-h-dvh">
-      {/* Tournament header */}
       <header className="border-b border-ink-line bg-ink">
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
@@ -61,13 +62,12 @@ export default async function TournamentLayout({ children, params }: Props) {
             <span>{tournament.platform}</span>
             {tournament.entryFeeKobo > 0 && (
               <span className="text-amber font-medium">
-                ₦{tournament.entryFeeKobo / 100} entry
+                ₦{(tournament.entryFeeKobo / 100).toLocaleString()} entry
               </span>
             )}
             <span>{filledSlots}/{capacity} slots</span>
           </div>
 
-          {/* Registration CTA */}
           {(tournament.status === "REGISTRATION_OPEN" || tournament.status === "PUBLISHED") && (
             <div className="pt-2">
               <Link
@@ -75,13 +75,12 @@ export default async function TournamentLayout({ children, params }: Props) {
                 className="inline-flex items-center justify-center bg-kick text-floodlight rounded-md px-6 py-2 text-sm font-medium
                            hover:bg-kick/90 transition-colors"
               >
-                Register now · ₦{tournament.entryFeeKobo / 100}
+                Register now · ₦{(tournament.entryFeeKobo / 100).toLocaleString()}
               </Link>
             </div>
           )}
         </div>
 
-        {/* Nav tabs */}
         <nav className="max-w-6xl mx-auto px-4 md:px-6 flex overflow-x-auto gap-0 border-t border-ink-line">
           {navItems.map((item) => (
             <Link
@@ -96,7 +95,6 @@ export default async function TournamentLayout({ children, params }: Props) {
         </nav>
       </header>
 
-      {/* Page content */}
       <main className="max-w-6xl mx-auto px-4 md:px-6 py-6">
         {children}
       </main>
