@@ -1,0 +1,396 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String?   @unique
+  emailVerified   DateTime?
+  phone           String?   @unique
+  phoneVerified   Boolean   @default(false)
+  passwordHash    String?
+  handle          String    @unique
+  displayName     String
+  avatarUrl       String?
+  defaultGamertag String?
+  platform        String?
+  country         String?
+  createdAt       DateTime  @default(now())
+  bannedAt        DateTime?
+
+  accounts Account[]
+  sessions Session[]
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  phone      String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  userId     String?
+  @@map("otp_challenges")
+}
+
+model Organization {
+  id                     String   @id @default(cuid())
+  slug                   String   @unique
+  name                   String
+  logoUrl                String?
+  bio                    String?
+  verificationTier       String   @default("UNVERIFIED")
+  contactEmail           String?
+  contactPhone           String?
+  paystackSubaccountCode String?
+  monnifySubaccountCode  String?
+  payoutBankMasked       String?
+  createdById            String
+  createdAt              DateTime @default(now())
+  @@map("organizations")
+}
+
+model OrgMember {
+  orgId  String
+  userId String
+  role   String
+  @@id([orgId, userId])
+  @@map("org_members")
+}
+
+model Tournament {
+  id                     String    @id @default(cuid())
+  orgId                  String
+  slug                   String    @unique
+  name                   String
+  game                   String    @default("EA_FC_26")
+  platform               String    @default("PS5")
+  status                 String    @default("DRAFT")
+  visibility             String    @default("PRIVATE")
+  coverUrl               String?
+  summary                String?
+  rulesMarkdown          String?
+  entryFeeKobo           Int       @default(0)
+  feeBearer              String    @default("ORGANIZER")
+  currency               String    @default("NGN")
+  capacity               Int       @default(16)
+  entryMode              String    @default("INDIVIDUAL")
+  squadSize              Int?
+  formatKey              String    @default("SINGLE_ELIMINATION")
+  formatConfig           String    @default("{}")
+  seed                   Int?
+  pointsWin              Int       @default(3)
+  pointsDraw             Int       @default(1)
+  pointsLoss             Int       @default(0)
+  tiebreakersSquad       String    @default("[\"POINTS\",\"GOAL_DIFFERENCE\",\"GOALS_FOR\",\"HEAD_TO_HEAD_POINTS\",\"HEAD_TO_HEAD_GD\",\"MANUAL_OVERRIDE\"]")
+  tiebreakersIndividual  String    @default("[\"POINTS\",\"GOAL_DIFFERENCE\",\"GOALS_FOR\",\"HEAD_TO_HEAD_POINTS\",\"HEAD_TO_HEAD_GD\",\"WIN_PERCENTAGE\",\"MANUAL_OVERRIDE\"]")
+  forfeitScoreline       String    @default("3-0")
+  disputeWindowHours     Int       @default(12)
+  requiresApproval       Boolean   @default(false)
+  registrationOpensAt    DateTime?
+  registrationClosesAt   DateTime?
+  startsAt               DateTime?
+  endsAt                 DateTime?
+  venue                  String?
+  isOnline               Boolean   @default(false)
+  prizePoolKobo          Int?
+  prizeSplit             String?
+  standingsVersion       Int       @default(0)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  @@map("tournaments")
+}
+
+model CustomField {
+  id           String  @id @default(cuid())
+  tournamentId String
+  key          String
+  label        String
+  type         String
+  required     Boolean @default(false)
+  options      String?
+  isUnique     Boolean @default(false)
+  position     Int     @default(0)
+  @@unique([tournamentId, key])
+  @@map("custom_fields")
+}
+
+model Squad {
+  id            String  @id @default(cuid())
+  tournamentId  String
+  name          String
+  shortName     String
+  colorKey      Int     @default(0)
+  crestUrl      String?
+  captainUserId String?
+  inviteCode    String  @unique @default("")
+  @@map("squads")
+}
+
+model SquadMember {
+  squadId  String
+  userId   String
+  position Int @default(0)
+  @@id([squadId, userId])
+  @@map("squad_members")
+}
+
+model Registration {
+  id               String    @id @default(cuid())
+  tournamentId     String
+  userId           String
+  squadId          String?
+  gamertag         String
+  status           String    @default("PENDING_PAYMENT")
+  fieldValues      String    @default("{}")
+  slotHeldUntil    DateTime?
+  waitlistPosition Int?
+  approvedById     String?
+  createdAt        DateTime  @default(now())
+  @@unique([tournamentId, gamertag])
+  @@unique([tournamentId, userId])
+  @@map("registrations")
+}
+
+model Payment {
+  id              String    @id @default(cuid())
+  registrationId  String
+  provider        String    @default("PAYSTACK")
+  reference       String    @unique
+  providerRef     String?
+  amountKobo      Int
+  platformFeeKobo Int       @default(0)
+  gatewayFeeKobo  Int?
+  status          String    @default("PENDING")
+  channel         String?
+  paidAt          DateTime?
+  rawPayload      String?
+  createdAt       DateTime  @default(now())
+  @@map("payments")
+}
+
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  provider        String
+  providerEventId String   @unique
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+  payload         String
+  @@map("webhook_events")
+}
+
+model Refund {
+  id            String   @id @default(cuid())
+  paymentId     String
+  amountKobo    Int
+  reason        String?
+  status        String   @default("PENDING")
+  providerRef   String?
+  initiatedById String
+  createdAt     DateTime @default(now())
+  @@map("refunds")
+}
+
+model Stage {
+  id           String @id @default(cuid())
+  tournamentId String
+  kind         String
+  position     Int    @default(0)
+  config       String @default("{}")
+  @@map("stages")
+}
+
+model Group {
+  id      String @id @default(cuid())
+  stageId String
+  name    String
+  position Int   @default(0)
+  @@map("groups")
+}
+
+model Gameweek {
+  id           String    @id @default(cuid())
+  tournamentId String
+  number       Int
+  label        String?
+  opensAt      DateTime?
+  closesAt     DateTime?
+  publishedAt  DateTime?
+  @@map("gameweeks")
+}
+
+model SquadMatchup {
+  id           String @id @default(cuid())
+  tournamentId String
+  gameweekId   String
+  squadAId     String
+  squadBId     String
+  @@map("squad_matchups")
+}
+
+model Match {
+  id             String    @id @default(cuid())
+  tournamentId   String
+  stageId        String?
+  gameweekId     String?
+  groupId        String?
+  squadMatchupId String?
+  bracketRound   Int?
+  bracketSlot    Int?
+  bestOf         Int       @default(1)
+  homeUserId     String?
+  awayUserId     String?
+  homeSquadId    String?
+  awaySquadId    String?
+  status         String    @default("SCHEDULED")
+  homeScore      Int?
+  awayScore      Int?
+  winnerUserId   String?
+  playedAt       DateTime?
+  scheduledAt    DateTime?
+  venue          String?
+  enteredById    String?
+  editedCount    Int       @default(0)
+  sourceMatchIds String?
+  @@map("matches")
+}
+
+model Standing {
+  id             String   @id @default(cuid())
+  tournamentId   String
+  scope          String
+  squadId        String?
+  userId         String?
+  played         Int      @default(0)
+  won            Int      @default(0)
+  drawn          Int      @default(0)
+  lost           Int      @default(0)
+  goalsFor       Int      @default(0)
+  goalsAgainst   Int      @default(0)
+  goalDiff       Int      @default(0)
+  points         Int      @default(0)
+  rank           Int      @default(0)
+  rankShared     Boolean  @default(false)
+  tiebreakTrace  String?
+  updatedAt      DateTime @updatedAt
+  @@unique([tournamentId, scope, squadId, userId])
+  @@map("standings")
+}
+
+model Award {
+  id               String   @id @default(cuid())
+  tournamentId     String
+  key              String
+  label            String
+  recipientUserId  String?
+  recipientSquadId String?
+  amountKobo       Int?
+  payoutStatus     String   @default("DECLARED")
+  receiptUrl       String?
+  paidAt           DateTime?
+  @@map("awards")
+}
+
+model Dispute {
+  id             String    @id @default(cuid())
+  matchId        String
+  raisedByUserId String
+  reason         String
+  evidenceUrl    String?
+  status         String    @default("OPEN")
+  resolutionNote String?
+  resolvedById   String?
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+  @@map("disputes")
+}
+
+model Announcement {
+  id           String   @id @default(cuid())
+  tournamentId String
+  title        String
+  body         String
+  channels     String   @default("[]")
+  sentAt       DateTime?
+  @@map("announcements")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  payload   String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  @@map("notifications")
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorUserId  String?
+  orgId        String?
+  tournamentId String?
+  entity       String
+  entityId     String
+  action       String
+  before       String?
+  after        String?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  @@map("audit_logs")
+}
+
+model MediaAsset {
+  id           String   @id @default(cuid())
+  ownerType    String
+  ownerId      String
+  kind         String
+  url          String
+  mimeType     String
+  bytes        Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+  @@map("media_assets")
+}
