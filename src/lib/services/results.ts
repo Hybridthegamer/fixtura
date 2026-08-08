@@ -9,8 +9,10 @@ export async function enterResult(
   awayScore: number,
   tournamentSlug: string,
 ) {
-  const match = await prisma.match.findUnique({ where: { id: matchId }, include: { tournament: true } });
+  const match = await prisma.match.findUnique({ where: { id: matchId } });
   if (!match) return { error: "Match not found." };
+  if (match.tournamentId === null) return { error: "Match has no tournament." };
+  if (!match.tournamentId) return { error: "Match has no tournament." };
 
   // Determine winner
   let winnerId: string | null = null;

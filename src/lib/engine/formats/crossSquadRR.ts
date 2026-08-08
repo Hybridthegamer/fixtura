@@ -55,7 +55,7 @@ export const crossSquadIndividualRR: FormatAdapter<CrossSquadRRConfig> = {
     const errors: string[] = [];
     const warnings: string[] = [];
     const cfg = { ...DEFAULT_CONFIG, ...config };
-    const P = cfg.squadSize;
+    const P = cfg.squadSize!;
 
     // Group entrants by squad
     const squadMap = new Map<string, Entrant[]>();
@@ -96,7 +96,7 @@ export const crossSquadIndividualRR: FormatAdapter<CrossSquadRRConfig> = {
     seed?: number,
   ): TournamentPlan {
     const cfg = { ...DEFAULT_CONFIG, ...config };
-    const P = cfg.squadSize;
+    const P = cfg.squadSize!;
     const rng = mulberry32(seed ?? Date.now());
 
     // Group entrants by squad
@@ -124,7 +124,7 @@ export const crossSquadIndividualRR: FormatAdapter<CrossSquadRRConfig> = {
     // Group into gameweeks
     const gameweeks: GameweekPlan[] = [];
     const fixtures: Fixture[] = [];
-    const matchupsPerGw = cfg.matchupsPerGameweek;
+    const matchupsPerGw = cfg.matchupsPerGameweek!;
     let fixtureCounter = 0;
 
     for (let i = 0; i < shuffledMatchups.length; i += matchupsPerGw) {

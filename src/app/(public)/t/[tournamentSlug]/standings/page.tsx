@@ -32,7 +32,7 @@ export default async function StandingsPage({ params }: Props) {
         entityId: (s.userId as string) ?? (s.entityId as string),
         entityName: (reg as { gamertag?: string })?.gamertag ?? (s.entityId as string),
         squadId: (reg as { squadId?: string })?.squadId ?? undefined,
-        squadColorKey: t.squads.find((sq: { id: string | null }) => sq.id === (reg as { squadId?: string })?.squadId) as { colorKey?: number } | undefined,
+        squadColorKey: (t.squads.find((sq: { id: string | null }) => sq.id === (reg as { squadId?: string })?.squadId) as { colorKey?: number } | undefined)?.colorKey,
         played: s.played as number, won: s.won as number, drawn: s.drawn as number, lost: s.lost as number,
         goalsFor: s.goalsFor as number, goalsAgainst: s.goalsAgainst as number,
         goalDiff: s.goalDiff as number, points: s.points as number,

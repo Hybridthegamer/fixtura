@@ -20,7 +20,7 @@ export async function getTournament(slug: string) {
       }),
       prisma.match.findMany({
         where: { tournamentId: tournament.id },
-        orderBy: { createdAt: "asc" as const },
+        orderBy: { id: "asc" as const },
       }),
       prisma.gameweek.findMany({
         where: { tournamentId: tournament.id },
