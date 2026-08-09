@@ -1,4 +1,4 @@
-// ─── Middleware ──────────────────────────────────────────────
+// ─── Proxy (Next.js 16 — renamed from middleware.ts) ────────
 import { auth } from "@/lib/auth/config";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
