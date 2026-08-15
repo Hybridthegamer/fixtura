@@ -2,6 +2,9 @@
 import { getCachedTournament } from "@/lib/services/tournament";
 import { ResultsConsole } from "@/components/results/results-console";
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth/config";
+import { prisma } from "@/lib/db";
+import { assertCan, AuthError, type Role } from "@/lib/auth/roles";
 
 interface Props {
   params: Promise<{ tournamentSlug: string }>;
@@ -11,6 +14,22 @@ export default async function ManageResultsPage({ params }: Props) {
   const { tournamentSlug } = await params;
   const t = await getCachedTournament(tournamentSlug);
   if (!t) notFound();
+
+  const session = await auth();
+  if (!session?.user?.id) notFound();
+  const membership = await prisma.orgMember.findUnique({
+    where: { orgId_userId: { orgId: t.orgId, userId: session.user.id } },
+  });
+  try {
+    assertCan(
+      { userId: session.user.id, role: (membership?.role as Role) ?? "PLAYER", orgId: membership?.orgId },
+      "results:enter",
+      t.orgId,
+    );
+  } catch (e) {
+    if (e instanceof AuthError) notFound();
+    throw e;
+  }
 
   const matchData = t.matches.map((m: Record<string, unknown>) => {
     const homeUser = t.registrations.find((r: { userId: string | null }) => r.userId === m.homeUserId);

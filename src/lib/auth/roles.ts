@@ -153,14 +153,19 @@ export function assertCan(
     );
   }
 
-  // Check org-level tenancy for org-scoped actions
-  if (resourceOrgId && actor.orgId && resourceOrgId !== actor.orgId) {
+  // Check org-level tenancy for org-scoped actions. A missing actor.orgId is
+  // NOT an exemption — an actor with no organization must be denied access
+  // to a specific org's resource just as much as an actor from a different
+  // org (§11: "An ORG_ADMIN of org A cannot read or mutate anything
+  // belonging to org B"). Only checking `actor.orgId && ...` here would
+  // silently allow through any actor with no orgId set at all.
+  if (resourceOrgId) {
     const exemptActions: Action[] = [
       "tournament:read",
       "registration:create",
       "prizes:read",
     ];
-    if (!exemptActions.includes(action)) {
+    if (!exemptActions.includes(action) && actor.orgId !== resourceOrgId) {
       throw new AuthError(
         `Cross-organization access denied`,
         403,

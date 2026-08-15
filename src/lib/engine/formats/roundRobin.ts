@@ -11,8 +11,11 @@ import type {
   StandingRow,
   TiebreakerRule,
   EngineState,
+  EngineMutation,
   GameweekPlan,
+  PointsConfig,
 } from "../types";
+import { DEFAULT_POINTS } from "../types";
 
 export interface RoundRobinConfig {
   double?: boolean;
@@ -98,13 +101,18 @@ export const roundRobin: FormatAdapter<RoundRobinConfig> = {
     };
   },
 
+  onResult(): EngineMutation[] {
+    return []; // No bracket progression — every fixture is fixed at plan time.
+  },
+
   standings(
     fixtures: Fixture[],
     results: Map<string, MatchResult>,
     rules: TiebreakerRule[],
     entrants: Entrant[],
+    pointsConfig?: PointsConfig,
   ): StandingsSet {
-    return computeRoundRobinStandings(fixtures, results, rules, entrants);
+    return computeRoundRobinStandings(fixtures, results, rules, entrants, pointsConfig ?? DEFAULT_POINTS);
   },
 
   isComplete(state: EngineState): boolean {
@@ -121,8 +129,9 @@ function computeRoundRobinStandings(
   results: Map<string, MatchResult>,
   _rules: TiebreakerRule[],
   entrants: Entrant[],
+  pointsConfig: PointsConfig,
 ): StandingsSet {
-  const PTS_WIN = 3, PTS_DRAW = 1;
+  const PTS_WIN = pointsConfig.win, PTS_DRAW = pointsConfig.draw;
   const stats = new Map<string, StandingRow>();
 
   for (const e of entrants) {

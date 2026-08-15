@@ -1,6 +1,8 @@
 // ─── NACOS Super League Seed Script (§15) ───────────────────
 // Creates the demo/regression fixture: 4 squads, 20 players, ₦5k entry, ₦100k pool.
 import { PrismaClient } from "@prisma/client";
+import { crossSquadIndividualRR } from "../src/lib/engine";
+import type { Entrant } from "../src/lib/engine/types";
 
 const prisma = new PrismaClient();
 
@@ -198,12 +200,80 @@ async function main() {
     ],
   });
 
+  // ─── Fixtures (§15: "end to end") ──────────────────────────
+  // Run the actual format engine — the seed IS the §14 regression fixture,
+  // so it must go through the same crossSquadIndividualRR.plan() every
+  // tournament does, not a hand-rolled shortcut.
+  const entrants: Entrant[] = Object.entries(players).flatMap(([level, playerIds]) =>
+    playerIds.map((userId) => ({ id: userId, name: userId, squadId: squadIds[level] })),
+  );
+
+  const plan = crossSquadIndividualRR.plan(
+    { squadSize: 5, matchupsPerGameweek: 2 },
+    entrants,
+    42, // matches tournament.seed — plan() is deterministic given the same seed
+  );
+
+  const gameweekIds = new Map<number, string>();
+  for (const gw of plan.gameweeks) {
+    const windowStart = new Date(Date.now() + (gw.number - 1) * 7 * 24 * 60 * 60 * 1000);
+    const windowEnd = new Date(windowStart.getTime() + 5 * 24 * 60 * 60 * 1000); // 5-day window (§6.6)
+    const created = await prisma.gameweek.create({
+      data: {
+        tournamentId: tournament.id,
+        number: gw.number,
+        label: gw.label,
+        opensAt: windowStart,
+        closesAt: windowEnd,
+        publishedAt: new Date(),
+      },
+    });
+    gameweekIds.set(gw.number, created.id);
+  }
+
+  const squadMatchupIds = new Map<string, string>();
+  for (const f of plan.fixtures) {
+    const gwId = gameweekIds.get(f.gameweek!)!;
+    const key = `${f.gameweek}:${[f.homeSquadId, f.awaySquadId].sort().join("|")}`;
+    if (!squadMatchupIds.has(key)) {
+      const created = await prisma.squadMatchup.create({
+        data: {
+          tournamentId: tournament.id,
+          gameweekId: gwId,
+          squadAId: f.homeSquadId!,
+          squadBId: f.awaySquadId!,
+        },
+      });
+      squadMatchupIds.set(key, created.id);
+    }
+  }
+
+  await prisma.match.createMany({
+    data: plan.fixtures.map((f) => ({
+      tournamentId: tournament.id,
+      gameweekId: gameweekIds.get(f.gameweek!)!,
+      squadMatchupId: squadMatchupIds.get(`${f.gameweek}:${[f.homeSquadId, f.awaySquadId].sort().join("|")}`)!,
+      homeUserId: f.homeEntrantId,
+      awayUserId: f.awayEntrantId,
+      homeSquadId: f.homeSquadId!,
+      awaySquadId: f.awaySquadId!,
+      bestOf: 1,
+      status: "SCHEDULED" as const,
+    })),
+  });
+
+  await prisma.tournament.update({
+    where: { id: tournament.id },
+    data: { status: "LIVE" },
+  });
+
   console.log("✅ NACOS Super League seeded successfully!");
   console.log(`   Tournament: ${tournament.name}`);
   console.log(`   Slug: ${tournament.slug}`);
   console.log(`   4 squads, 20 players, ₦5,000 entry, ₦100,000 pool`);
   console.log(`   Entry fee: ${tournament.entryFeeKobo / 100} NGN`);
   console.log(`   Prizes: Squad ₦60,000 | Best Individual ₦20,000 | Golden Boot ₦12,000 | Iron Glove ₦8,000`);
+  console.log(`   Fixtures: ${plan.totalMatches} matches across ${plan.gameweeks.length} gameweeks, 2 matchups/gameweek`);
 }
 
 main()

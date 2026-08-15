@@ -75,6 +75,10 @@ export interface EngineState {
   fixtures: Fixture[];
   results: Map<string, MatchResult>;
   stage: string; // DRAFT | REGISTRATION_OPEN | LIVE | COMPLETED etc.
+  /** The tournament's formatConfig, needed by formats whose fixtures are
+   *  generated incrementally (e.g. Swiss round count) rather than entirely
+   *  up front in plan(). Opaque to the engine barrel — each adapter casts it. */
+  formatConfig?: unknown;
 }
 
 export type TiebreakerRule =
@@ -120,6 +124,14 @@ export interface StandingsSet {
   individual: StandingRow[];
 }
 
+export interface PointsConfig {
+  win: number;
+  draw: number;
+  loss: number;
+}
+
+export const DEFAULT_POINTS: PointsConfig = { win: 3, draw: 1, loss: 0 };
+
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
@@ -136,11 +148,16 @@ export interface FormatAdapter<C = unknown> {
   key: FormatKey;
   validate(config: C, entrants: Entrant[]): ValidationResult;
   plan(config: C, entrants: Entrant[], seed?: number): TournamentPlan;
+  /** Bracket progression: given a newly-entered result, returns the mutations
+   *  needed to advance winners/losers into downstream fixtures. Pure — the
+   *  caller (a service, or a test) is responsible for applying the mutations. */
+  onResult(state: EngineState, result: MatchResult): EngineMutation[];
   standings(
     fixtures: Fixture[],
     results: Map<string, MatchResult>,
     rules: TiebreakerRule[],
     entrants: Entrant[],
+    pointsConfig?: PointsConfig,
   ): StandingsSet;
   isComplete(state: EngineState): boolean;
 }
