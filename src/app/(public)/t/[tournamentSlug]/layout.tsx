@@ -30,10 +30,18 @@ export default async function TournamentLayout({ children, params }: Props) {
   const publishedGameweeks = tournament.gameweeks.filter(
     (gw: { publishedAt: Date | null }) => gw.publishedAt
   ).length;
-  const statusText: Record<string, string> = {
-    REGISTRATION_OPEN: `Registration open${tournament.registrationClosesAt ? ` · closes in ${Math.ceil((new Date(tournament.registrationClosesAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))}d` : ""}`,
-    LIVE: `Live · Gameweek ${publishedGameweeks} of ${tournament.gameweeks.length}`,
-    COMPLETED: "Completed",
+
+  // §9.2: "The status pill is load-bearing" — closes-in/gameweek detail text.
+  // Computed once per request (this route is dynamic, not statically cached)
+  // rather than during a memoizable render pass, so reading the clock here
+  // is intentional — see the eslint-disable below.
+  // eslint-disable-next-line react-hooks/purity -- request-time countdown, route renders dynamically
+  const now = Date.now();
+  const statusDetail: Record<string, string | undefined> = {
+    REGISTRATION_OPEN: tournament.registrationClosesAt
+      ? `closes in ${Math.max(0, Math.ceil((new Date(tournament.registrationClosesAt).getTime() - now) / (1000 * 60 * 60 * 24)))}d`
+      : undefined,
+    LIVE: `Gameweek ${publishedGameweeks} of ${tournament.gameweeks.length}`,
   };
 
   const filledSlots = tournament.registrations.length;
@@ -50,7 +58,7 @@ export default async function TournamentLayout({ children, params }: Props) {
             >
               {tournament.organization.name}
             </Link>
-            <StatusPill status={tournament.status} />
+            <StatusPill status={tournament.status} detail={statusDetail[tournament.status]} />
           </div>
 
           <h1 className="font-score text-2xl md:text-3xl text-floodlight tracking-[0.01em]">

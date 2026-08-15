@@ -13,8 +13,11 @@ import type {
   StandingRow,
   TiebreakerRule,
   EngineState,
+  EngineMutation,
   GameweekPlan,
+  PointsConfig,
 } from "../types";
+import { DEFAULT_POINTS } from "../types";
 
 export interface CrossSquadRRConfig {
   squadsPerMatchup?: number;
@@ -170,13 +173,18 @@ export const crossSquadIndividualRR: FormatAdapter<CrossSquadRRConfig> = {
     };
   },
 
+  onResult(): EngineMutation[] {
+    return []; // Every cross pairing is fixed at plan time — no progression.
+  },
+
   standings(
     fixtures: Fixture[],
     results: Map<string, MatchResult>,
     rules: TiebreakerRule[],
     entrants: Entrant[],
+    pointsConfig?: PointsConfig,
   ): StandingsSet {
-    return computeCrossSquadStandings(fixtures, results, rules, entrants);
+    return computeCrossSquadStandings(fixtures, results, rules, entrants, pointsConfig ?? DEFAULT_POINTS);
   },
 
   isComplete(state: EngineState): boolean {
@@ -195,10 +203,11 @@ function computeCrossSquadStandings(
   results: Map<string, MatchResult>,
   rules: TiebreakerRule[],
   entrants: Entrant[],
+  pointsConfig: PointsConfig,
 ): StandingsSet {
-  const PTS_WIN = 3;
-  const PTS_DRAW = 1;
-  const PTS_LOSS = 0;
+  const PTS_WIN = pointsConfig.win;
+  const PTS_DRAW = pointsConfig.draw;
+  const PTS_LOSS = pointsConfig.loss;
 
   // Individual stats
   const indivStats = new Map<string, {
@@ -237,7 +246,7 @@ function computeCrossSquadStandings(
     const awaySquad = f.awaySquadId ?? indivStats.get(awayId)?.squadId;
 
     let homeGF = 0, awayGF = 0, homeGA = 0, awayGA = 0;
-    let homeW = false, awayW = false, draw = false;
+    let homeW = false, awayW = false;
 
     if (r.status === "FORFEIT_HOME") {
       const [fHome, fAway] = (r.forfeitDefaultScore ?? "3-0").split("-").map(Number);
@@ -258,7 +267,6 @@ function computeCrossSquadStandings(
       awayGA = r.homeScore;
       if (homeGF > awayGF) homeW = true;
       else if (awayGF > homeGF) awayW = true;
-      else draw = true;
     } else {
       continue;
     }
@@ -297,8 +305,8 @@ function computeCrossSquadStandings(
   }
 
   // Build standings rows
-  function points(w: number, d: number): number {
-    return w * PTS_WIN + d * PTS_DRAW + 0 * PTS_LOSS;
+  function points(w: number, d: number, l: number): number {
+    return w * PTS_WIN + d * PTS_DRAW + l * PTS_LOSS;
   }
 
   const squadRows: StandingRow[] = [];
@@ -309,7 +317,7 @@ function computeCrossSquadStandings(
       played: s.played, won: s.won, drawn: s.drawn, lost: s.lost,
       goalsFor: s.goalsFor, goalsAgainst: s.goalsAgainst,
       goalDiff: s.goalsFor - s.goalsAgainst,
-      points: points(s.won, s.drawn),
+      points: points(s.won, s.drawn, s.lost),
       rank: 0, rankShared: false, tiebreakTrace: [],
     });
   }
@@ -323,65 +331,73 @@ function computeCrossSquadStandings(
       played: s.played, won: s.won, drawn: s.drawn, lost: s.lost,
       goalsFor: s.goalsFor, goalsAgainst: s.goalsAgainst,
       goalDiff: s.goalsFor - s.goalsAgainst,
-      points: points(s.won, s.drawn),
+      points: points(s.won, s.drawn, s.lost),
       rank: 0, rankShared: false, tiebreakTrace: [],
     });
   }
 
   return {
-    squad: rankRows(squadRows, rules, fixtures, results, entrants),
-    individual: rankRows(indivRows, rules, fixtures, results, entrants),
+    squad: rankRows(squadRows, rules, fixtures, results, entrants, pointsConfig),
+    individual: rankRows(indivRows, rules, fixtures, results, entrants, pointsConfig),
   };
 }
 
 // ─── Ranking with tiebreakers ──────────────────────────────
+// Tie-group membership is tracked explicitly by resolveTieGroup as it
+// recursively applies the cascade, rather than re-derived by comparing
+// adjacent rows pairwise afterwards — a pairwise re-check is wrong for
+// 3+-way ties (e.g. a rock-paper-scissors cycle on HEAD_TO_HEAD_POINTS:
+// checking only two of the three tied rows at a time "separates" them
+// even though the full mini-table leaves all three level).
 function rankRows(
   rows: StandingRow[],
   rules: TiebreakerRule[],
   fixtures: Fixture[],
   results: Map<string, MatchResult>,
   entrants: Entrant[],
+  pointsConfig: PointsConfig,
 ): StandingRow[] {
   const sorted = [...rows];
   const trace: Map<string, TiebreakerRule[]> = new Map();
+  const tieGroupOf = new Map<string, number>();
+  let nextGroupId = 0;
 
-  // Sort by points first
   sorted.sort((a, b) => b.points - a.points);
 
-  // Apply tiebreaker cascade
   if (rules.length > 0) {
-    // Find groups tied on points
     const groups = groupByPoints(sorted);
     for (const group of groups) {
-      if (group.length <= 1) continue;
-      const resolved = applyTiebreakers(
-        group, rules, fixtures, results, entrants, trace,
+      if (group.length <= 1) {
+        if (group.length === 1) tieGroupOf.set(group[0].entityId, nextGroupId++);
+        continue;
+      }
+      const resolved = resolveTieGroup(
+        group, rules, fixtures, results, entrants, trace, tieGroupOf, () => nextGroupId++, pointsConfig,
       );
-      // Replace group with resolved order
       for (let i = 0; i < resolved.length; i++) {
         const idx = sorted.indexOf(group[i]);
         if (idx >= 0) sorted[idx] = resolved[i];
       }
     }
+  } else {
+    for (const r of sorted) tieGroupOf.set(r.entityId, nextGroupId++);
   }
 
-  // Assign ranks
+  // Assign ranks from the resolved tie-group membership.
   let rank = 1;
   let i = 0;
   while (i < sorted.length) {
-    // Find how many share this rank
     let j = i + 1;
-    while (
-      j < sorted.length &&
-      sorted[j].points === sorted[i].points &&
-      !isSeparatedByTiebreak(sorted[i], sorted[j], rules, fixtures, results, entrants)
-    ) {
+    while (j < sorted.length && tieGroupOf.get(sorted[j].entityId) === tieGroupOf.get(sorted[i].entityId)) {
       j++;
     }
     const shared = j - i > 1;
     for (let k = i; k < j; k++) {
       sorted[k].rank = rank;
       sorted[k].rankShared = shared;
+      sorted[k].tiebreakTrace = (trace.get(sorted[k].entityId) ?? []).map((rule) => ({
+        rule, applied: true, result: "",
+      }));
     }
     rank += j - i;
     i = j;
@@ -408,24 +424,33 @@ function groupByPoints(rows: StandingRow[]): StandingRow[][] {
   return groups;
 }
 
-function applyTiebreakers(
+/**
+ * Recursively resolves a group of rows tied on points, applying the
+ * tiebreaker cascade rule by rule. Every row ends up tagged in `tieGroupOf`
+ * with an id shared by every other row it remains genuinely tied with —
+ * that id (not a pairwise re-check) is what `rankRows` uses to decide
+ * shared ranks, so an unbreakable N-way tie can never be silently ordered.
+ */
+function resolveTieGroup(
   group: StandingRow[],
   rules: TiebreakerRule[],
   fixtures: Fixture[],
   results: Map<string, MatchResult>,
   entrants: Entrant[],
   trace: Map<string, TiebreakerRule[]>,
+  tieGroupOf: Map<string, number>,
+  nextGroupId: () => number,
+  pointsConfig: PointsConfig,
 ): StandingRow[] {
   const working = [...group];
 
-  for (const rule of rules) {
+  for (let ruleIdx = 0; ruleIdx < rules.length; ruleIdx++) {
+    const rule = rules[ruleIdx];
     if (working.length <= 1) break;
     if (rule === "MANUAL_OVERRIDE" || rule === "COIN_TOSS") break;
 
-    // Try to separate using this rule
-    const separated = separateByRule(working, rule, fixtures, results, entrants);
+    const separated = separateByRule(working, rule, fixtures, results, entrants, pointsConfig);
     if (separated.length > 1) {
-      // Rule differentiated — success
       for (const sub of separated) {
         for (const row of sub) {
           const t = trace.get(row.entityId) ?? [];
@@ -433,20 +458,26 @@ function applyTiebreakers(
           trace.set(row.entityId, t);
         }
       }
-      // If multiple subgroups, recursively apply remaining rules
-      if (separated.length > 1 && separated.some(s => s.length > 1)) {
-        const result: StandingRow[] = [];
-        for (const sub of separated) {
-          result.push(...applyTiebreakers(sub, rules.slice(1), fixtures, results, entrants, trace));
+      const remainingRules = rules.slice(ruleIdx + 1);
+      const result: StandingRow[] = [];
+      for (const sub of separated) {
+        if (sub.length === 1) {
+          tieGroupOf.set(sub[0].entityId, nextGroupId());
+          result.push(sub[0]);
+        } else {
+          result.push(
+            ...resolveTieGroup(sub, remainingRules, fixtures, results, entrants, trace, tieGroupOf, nextGroupId, pointsConfig),
+          );
         }
-        return result;
       }
-      return separated.flat();
+      return result;
     }
   }
 
-  // Unbreakable tie — keep original order, mark as shared
+  // Unbreakable tie — keep original order, all rows share one tie-group id.
+  const gid = nextGroupId();
   for (const row of working) {
+    tieGroupOf.set(row.entityId, gid);
     const t = trace.get(row.entityId) ?? [];
     t.push("MANUAL_OVERRIDE" as TiebreakerRule);
     trace.set(row.entityId, t);
@@ -460,6 +491,7 @@ function separateByRule(
   fixtures: Fixture[],
   results: Map<string, MatchResult>,
   _entrants: Entrant[],
+  pointsConfig: PointsConfig,
 ): StandingRow[][] {
   switch (rule) {
     case "POINTS":
@@ -477,9 +509,9 @@ function separateByRule(
     case "MATCHES_PLAYED_ASC":
       return separateBy(group, (r) => r.played, false);
     case "HEAD_TO_HEAD_POINTS":
-      return separateByHeadToHead(group, fixtures, results, "points");
+      return separateByHeadToHead(group, fixtures, results, "points", pointsConfig);
     case "HEAD_TO_HEAD_GD":
-      return separateByHeadToHead(group, fixtures, results, "gd");
+      return separateByHeadToHead(group, fixtures, results, "gd", pointsConfig);
     default:
       return [group];
   }
@@ -507,9 +539,10 @@ function separateByHeadToHead(
   fixtures: Fixture[],
   results: Map<string, MatchResult>,
   metric: "points" | "gd",
+  pointsConfig: PointsConfig,
 ): StandingRow[][] {
   const entityIds = new Set(group.map((r) => r.entityId));
-  const PTS_WIN = 3, PTS_DRAW = 1;
+  const PTS_WIN = pointsConfig.win, PTS_DRAW = pointsConfig.draw;
 
   const h2h = new Map<string, { points: number; gf: number; ga: number }>();
   for (const id of entityIds) {
@@ -547,18 +580,3 @@ function separateByHeadToHead(
   return separateBy(group, getter, true);
 }
 
-function isSeparatedByTiebreak(
-  a: StandingRow,
-  b: StandingRow,
-  rules: TiebreakerRule[],
-  fixtures: Fixture[],
-  results: Map<string, MatchResult>,
-  entrants: Entrant[],
-): boolean {
-  for (const rule of rules) {
-    if (rule === "MANUAL_OVERRIDE" || rule === "COIN_TOSS") return false;
-    const separated = separateByRule([a, b], rule, fixtures, results, entrants);
-    if (separated.length > 1) return true;
-  }
-  return false;
-}

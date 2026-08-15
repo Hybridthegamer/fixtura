@@ -89,16 +89,19 @@ export function Card({
 
 export function StatusPill({
   status,
+  detail,
   className,
 }: {
   status: string;
+  /** Load-bearing detail (§9.2): "closes in 3d", "Gameweek 2 of 3". */
+  detail?: string;
   className?: string;
 }) {
   const mapping: Record<string, { label: string; variant: "default" | "success" | "warning" | "danger" | "live" }> = {
     DRAFT: { label: "Draft", variant: "default" },
     PUBLISHED: { label: "Published", variant: "default" },
-    REGISTRATION_OPEN: { label: "Registration Open", variant: "live" },
-    REGISTRATION_CLOSED: { label: "Registration Closed", variant: "warning" },
+    REGISTRATION_OPEN: { label: "Registration open", variant: "live" },
+    REGISTRATION_CLOSED: { label: "Registration closed", variant: "warning" },
     SEEDING: { label: "Seeding", variant: "warning" },
     LIVE: { label: "Live", variant: "live" },
     COMPLETED: { label: "Completed", variant: "success" },
@@ -108,5 +111,9 @@ export function StatusPill({
 
   const m = mapping[status] ?? { label: status, variant: "default" as const };
 
-  return <Badge variant={m.variant} className={className}>{m.label}</Badge>;
+  return (
+    <Badge variant={m.variant} className={className}>
+      {m.label}{detail ? ` · ${detail}` : ""}
+    </Badge>
+  );
 }
